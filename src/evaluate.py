@@ -1,21 +1,10 @@
-"""
-src/evaluate.py
-
-Loads the fine-tuned model and evaluates it on the test split.
-Prints per-class precision, recall, F1 and a confusion matrix.
-"""
-
 import os
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import (
-    classification_report,
-    confusion_matrix,
-    ConfusionMatrixDisplay,
-)
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
 import matplotlib
-matplotlib.use("Agg")  # headless — safe for Codespaces
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
@@ -52,9 +41,9 @@ def get_test_split():
     return test_df
 
 
-def evaluate():
+def run_evaluate():
     if not os.path.exists(MODEL_PATH):
-        print(f"✗ Model not found at {MODEL_PATH}. Run src/train.py first.")
+        print(f"Model not found at {MODEL_PATH}. Run src/train.py first.")
         return
 
     print(f"Loading model from {MODEL_PATH}...")
@@ -74,7 +63,6 @@ def evaluate():
     loader = DataLoader(dataset, batch_size=BATCH_SIZE)
 
     all_preds = []
-    all_probs = []
 
     print("Running inference...")
     with torch.no_grad():
@@ -82,28 +70,21 @@ def evaluate():
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-            probs = torch.softmax(outputs.logits, dim=-1)
-            preds = torch.argmax(probs, dim=-1)
+            preds = torch.argmax(outputs.logits, dim=-1)
             all_preds.extend(preds.cpu().numpy())
-            all_probs.extend(probs[:, 1].cpu().numpy())  # prob of scam class
 
-    print("\n" + "="*55)
+    print("\n" + "=" * 55)
     print("CLASSIFICATION REPORT")
-    print("="*55)
-    print(classification_report(
-        true_labels, all_preds,
-        target_names=["legit", "scam"],
-        digits=4,
-    ))
+    print("=" * 55)
+    print(classification_report(true_labels, all_preds, target_names=["legit", "scam"], digits=4))
 
     cm = confusion_matrix(true_labels, all_preds)
     print("CONFUSION MATRIX")
-    print("="*55)
+    print("=" * 55)
     print(f"              Predicted legit  Predicted scam")
     print(f"Actual legit  {cm[0][0]:>14}  {cm[0][1]:>14}")
     print(f"Actual scam   {cm[1][0]:>14}  {cm[1][1]:>14}")
 
-    # Save confusion matrix plot
     os.makedirs("models", exist_ok=True)
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["legit", "scam"])
     fig, ax = plt.subplots(figsize=(6, 5))
@@ -112,8 +93,8 @@ def evaluate():
     plt.tight_layout()
     plot_path = "models/confusion_matrix.png"
     plt.savefig(plot_path, dpi=150)
-    print(f"\n📊 Confusion matrix saved to {plot_path}")
+    print(f"\nConfusion matrix saved to {plot_path}")
 
 
 if __name__ == "__main__":
-    evaluate()
+    run_evaluate()
