@@ -1,15 +1,7 @@
-"""
-src/train.py
-
-Fine-tunes distilbert-base-uncased on the scam detection dataset.
-Saves model + tokenizer to models/scam-detector/
-"""
-
 import os
 import pandas as pd
 import numpy as np
 import torch
-from dotenv import load_dotenv
 from sklearn.model_selection import train_test_split
 from datasets import Dataset
 from transformers import (
@@ -20,9 +12,7 @@ from transformers import (
     DataCollatorWithPadding,
     EarlyStoppingCallback,
 )
-import evaluate
-
-load_dotenv()
+import evaluate as hf_evaluate
 
 MODEL_NAME = "distilbert-base-uncased"
 MODEL_OUTPUT = "models/scam-detector"
@@ -51,17 +41,13 @@ def load_and_split(data_path: str):
 
 def tokenize_dataset(tokenizer, dataset: Dataset) -> Dataset:
     def tokenize(batch):
-        return tokenizer(
-            batch["text"],
-            truncation=True,
-            max_length=MAX_LEN,
-        )
+        return tokenizer(batch["text"], truncation=True, max_length=MAX_LEN)
     return dataset.map(tokenize, batched=True, remove_columns=["text"])
 
 
 def compute_metrics(eval_pred):
-    metric_acc = evaluate.load("accuracy")
-    metric_f1 = evaluate.load("f1")
+    metric_acc = hf_evaluate.load("accuracy")
+    metric_f1 = hf_evaluate.load("f1")
 
     logits, labels = eval_pred
     preds = np.argmax(logits, axis=-1)
@@ -86,7 +72,6 @@ def train():
     val_ds = tokenize_dataset(tokenizer, val_ds)
     test_ds = tokenize_dataset(tokenizer, test_ds)
 
-    # rename label column to labels (HuggingFace Trainer expects 'labels')
     train_ds = train_ds.rename_column("label", "labels")
     val_ds = val_ds.rename_column("label", "labels")
     test_ds = test_ds.rename_column("label", "labels")
@@ -103,7 +88,6 @@ def train():
         label2id={"legit": 0, "scam": 1},
     )
 
-    # Detect device
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Training on: {device}")
 
@@ -114,14 +98,14 @@ def train():
         per_device_eval_batch_size=BATCH_SIZE,
         learning_rate=LR,
         weight_decay=0.01,
-        eval_strategy="epoch",
+        evaluation_strategy="epoch",
         save_strategy="epoch",
         load_best_model_at_end=True,
         metric_for_best_model="f1",
         logging_dir="models/logs",
         logging_steps=50,
-        fp16=(device == "cuda"),
-        report_to="none",  # disable wandb/tensorboard by default
+        fp16=False,
+        report_to="none",
     )
 
     data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
@@ -137,19 +121,19 @@ def train():
         callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
     )
 
-    print("\n🚀 Starting training...")
+    print("\nStarting training...")
     trainer.train()
 
-    print(f"\n💾 Saving model to {MODEL_OUTPUT}")
+    print(f"\nSaving model to {MODEL_OUTPUT}")
     trainer.save_model(MODEL_OUTPUT)
     tokenizer.save_pretrained(MODEL_OUTPUT)
 
-    print("\n📊 Final evaluation on test set:")
+    print("\nFinal evaluation on test set:")
     results = trainer.evaluate(test_ds)
     for k, v in results.items():
         print(f"  {k}: {v:.4f}")
 
-    print("\n✅ Training complete.")
+    print("\nTraining complete.")
 
 
 if __name__ == "__main__":
